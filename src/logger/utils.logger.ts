@@ -8,6 +8,7 @@ import * as Transport from 'winston-transport';
 import { env, isKubernetesEnv } from '../config';
 import { getRequestIdContext } from '../middleware/http-context.middleware';
 import { WinstonLogger } from './winston.logger';
+import { MongoDB } from 'winston-mongodb';
 
 /**
  * Log level of the Winston log instances.
@@ -79,14 +80,46 @@ function formatLog(info: TransformableInfo) {
  * @param label The label of the logger instance.
  * @returns The Logger instance with transports attached by environment.
  */
-export function createNestWinstonLogger(label:string , level: string, transports: Transport[]) {
+export function createNestWinstonLogger(label: string) {
+  const logTransporters: Transport[] = [
+    // Stream to nothing by default, if there are no other transports (ideal for testing)
+    new transports.Stream({
+      stream: fs.createWriteStream(process.platform === 'win32' ? '\\\\.\\NUL' : '/dev/null'),
+      silent: true,
+    }),
+  ];
+
+  const consoleTransport = new transports.Console({ stderrLevels });
+  /* istanbul ignore else */
+  if (env.ENVIRONMENT === 'development') {
+    // Development formats
+    consoleTransport.format = format.combine(
+      format.colorize(),
+      format.printf(info => formatLog(info)),
+    );
+    logTransporters.push(consoleTransport);
+  } else if (isKubernetesEnv) {
+    // Production formats (logstash in Kubernetes)
+    consoleTransport.format = format.combine(format.timestamp(), format.logstash());
+    logTransporters.push(consoleTransport);
+  }
+
+
+  if(process.env.MONGODB_URI && process.env.MONGODB_URI !== '') {
+    const mongoTransport = new MongoDB({
+      db: process.env.MONGODB_URI,
+      collection: 'info_logs',
+    });
+    logTransporters.push(mongoTransport);
+  }
+
   return new WinstonLogger(
     createLogger({
       level,
       levels: config.npm.levels,
       // Global formats
       format: format.combine(injectMeta(), errorsFormat(), format.label({ label })),
-      transports: transports,
+      transports: logTransporters,
     }),
   );
 }
