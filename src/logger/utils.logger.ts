@@ -8,6 +8,7 @@ import * as Transport from 'winston-transport';
 import { env, isKubernetesEnv } from '../config';
 import { getRequestIdContext } from '../middleware/http-context.middleware';
 import { WinstonLogger } from './winston.logger';
+import winston = require('winston/lib/winston/config');
 
 /**
  * Log level of the Winston log instances.
@@ -79,8 +80,10 @@ function formatLog(info: TransformableInfo) {
  * @param label The label of the logger instance.
  * @returns The Logger instance with transports attached by environment.
  */
-export function createNestWinstonLogger(winstonLogger: WinstonLogger) {
-  return winstonLogger;
+export function createNestWinstonLogger(options: any) {
+  return new WinstonLogger(
+    createLogger(options),
+  );
 }
 
 /**
